@@ -175,6 +175,7 @@ package starling.core
         private var mStatsDisplay:StatsDisplay;
         private var mShareContext:Boolean;
         private var mProfile:String;
+        private var mSupportHighResolutions:Boolean;
         private var mContext:Context3D;
         
         private var mViewPort:Rectangle;
@@ -183,6 +184,7 @@ package starling.core
         
         private var mNativeStage:flash.display.Stage;
         private var mNativeOverlay:flash.display.Sprite;
+        private var mNativeStageContentScaleFactor:Number;
         
         private static var sCurrent:Starling;
         private static var sHandleLostContext:Boolean;
@@ -222,12 +224,14 @@ package starling.core
             mNativeOverlay = new Sprite();
             mNativeStage = stage;
             mNativeStage.addChild(mNativeOverlay);
+            mNativeStageContentScaleFactor = 1.0;
             mTouchProcessor = new TouchProcessor(mStage);
             mJuggler = new Juggler();
             mAntiAliasing = 0;
             mSimulateMultitouch = false;
             mEnableErrorChecking = false;
             mProfile = profile;
+            mSupportHighResolutions = false;
             mLastFrameTimestamp = getTimer() / 1000.0;
             mSupport  = new RenderSupport();
             
@@ -301,8 +305,16 @@ package starling.core
             if (mStage) mStage.dispose();
             if (mSupport) mSupport.dispose();
             if (mTouchProcessor) mTouchProcessor.dispose();
-            if (mContext && !mShareContext) mContext.dispose();
             if (sCurrent == this) sCurrent = null;
+            if (mContext && !mShareContext) 
+            {
+                // Per default, the context is recreated as long as there are listeners on it.
+                // Beginning with AIR 3.6, we can avoid that with an additional parameter.
+                
+                var disposeContext3D:Function = mContext.dispose;
+                if (disposeContext3D.length == 1) disposeContext3D(false);
+                else disposeContext3D();
+            }
         }
         
         // functions
@@ -405,12 +417,12 @@ package starling.core
                 mContext.present();
         }
         
-        private function updateViewPort(updateAliasing:Boolean=false):void
+        private function updateViewPort(forceUpdate:Boolean=false):void
         {
             // the last set viewport is stored in a variable; that way, people can modify the
             // viewPort directly (without a copy) and we still know if it has changed.
             
-            if (updateAliasing || mPreviousViewPort.width != mViewPort.width || 
+            if (forceUpdate || mPreviousViewPort.width != mViewPort.width || 
                 mPreviousViewPort.height != mViewPort.height ||
                 mPreviousViewPort.x != mViewPort.x || mPreviousViewPort.y != mViewPort.y)
             {
@@ -435,8 +447,13 @@ package starling.core
                     mStage3D.x = mClippedViewPort.x;
                     mStage3D.y = mClippedViewPort.y;
                     
-                    mSupport.configureBackBuffer(
-                        mClippedViewPort.width, mClippedViewPort.height, mAntiAliasing, false);
+                    mSupport.configureBackBuffer(mClippedViewPort.width, mClippedViewPort.height,
+                        mAntiAliasing, false, mSupportHighResolutions);
+                    
+                    if (mSupportHighResolutions && "contentsScaleFactor" in mNativeStage)
+                        mNativeStageContentScaleFactor = mNativeStage["contentsScaleFactor"];
+                    else
+                        mNativeStageContentScaleFactor = 1.0;
                 }
                 else
                 {
@@ -626,13 +643,16 @@ package starling.core
         
         /** Registers a vertex- and fragment-program under a certain name. If the name was already
          *  used, the previous program is overwritten. */
-        public function registerProgram(name:String, vertexProgram:ByteArray, fragmentProgram:ByteArray):void
+        public function registerProgram(name:String, vertexProgram:ByteArray, 
+                                        fragmentProgram:ByteArray):Program3D
         {
             deleteProgram(name);
             
             var program:Program3D = mContext.createProgram();
-            program.upload(vertexProgram, fragmentProgram);            
+            program.upload(vertexProgram, fragmentProgram);
             programs[name] = program;
+            
+            return program;
         }
         
         /** Deletes the vertex- and fragment-programs of a certain name. */
@@ -724,7 +744,7 @@ package starling.core
          *  set of textures depending on the display resolution. */
         public function get contentScaleFactor():Number
         {
-            return mViewPort.width / mStage.stageWidth;
+            return (mViewPort.width * mNativeStageContentScaleFactor) / mStage.stageWidth;
         }
         
         /** A Flash Sprite placed directly on top of the Starling content. Use it to display native
@@ -816,6 +836,20 @@ package starling.core
         /** The Context3D profile as requested in the constructor. Beware that if you are 
          *  using a shared context, this might not be accurate. */
         public function get profile():String { return mProfile; }
+        
+        /** Indicates that if the device supports HiDPI screens Starling will attempt to allocate
+         *  a larger back buffer than indicated via the viewPort size. Note that this is used
+         *  on Desktop only; mobile AIR apps still use the "requestedDisplayResolution" parameter
+         *  the application descriptor XML. */
+        public function get supportHighResolutions():Boolean { return mSupportHighResolutions; }
+        public function set supportHighResolutions(value:Boolean):void 
+        {
+            if (mSupportHighResolutions != value)
+            {
+                mSupportHighResolutions = value;
+                if (contextValid) updateViewPort(true);
+            }
+        }
         
         // static properties
         

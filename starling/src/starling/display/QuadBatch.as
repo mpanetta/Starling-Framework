@@ -274,7 +274,6 @@ package starling.display
             if (modelViewMatrix == null)
                 modelViewMatrix = quad.transformationMatrix;
             
-            var tinted:Boolean = texture ? (quad.tinted || parentAlpha != 1.0) : false;
             var alpha:Number = parentAlpha * quad.alpha;
             var vertexID:int = mNumQuads * 4;
             
@@ -283,7 +282,7 @@ package starling.display
             {
                 this.blendMode = blendMode ? blendMode : quad.blendMode;
                 mTexture = texture;
-                mTinted = tinted;
+                mTinted = texture ? (quad.tinted || parentAlpha != 1.0) : false;
                 mSmoothing = smoothing;
                 mVertexData.setPremultipliedAlpha(quad.premultipliedAlpha);
             }
@@ -340,7 +339,8 @@ package starling.display
         {
             if (mNumQuads == 0) return false;
             else if (mNumQuads + numQuads > 8192) return true; // maximum buffer size
-            else if (mTexture == null && texture == null) return false;
+            else if (mTexture == null && texture == null) 
+                return this.blendMode != blendMode;
             else if (mTexture != null && texture != null)
                 return mTexture.base != texture.base ||
                        mTexture.repeat != texture.repeat ||
@@ -439,9 +439,7 @@ package starling.display
                 for (i=0; i<numChildren; ++i)
                 {
                     var child:DisplayObject = container.getChildAt(i);
-                    var childVisible:Boolean = child.alpha  != 0.0 && child.visible && 
-                                               child.scaleX != 0.0 && child.scaleY != 0.0;
-                    if (childVisible)
+                    if (child.hasVisibleArea)
                     {
                         var childBlendMode:String = child.blendMode == BlendMode.AUTO ?
                                                     blendMode : child.blendMode;
